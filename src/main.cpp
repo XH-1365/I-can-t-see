@@ -1,4 +1,11 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* ssid = "111";
+const char* password = "00000000";
+
+WebServer server(80);
 
 const int servoPin1 = 22;
 const int servoPin2 = 23;
@@ -13,9 +20,6 @@ const int CH1_START_ANGLE = 90;
 const float DEG_PER_MM = 20.0;
 const int STEP_COUNT = 6;
 
-int ch1Angle = CH1_START_ANGLE;
-
-// 6个触点对应的ch1角度
 int dotAngle[6];
 
 void servoWrite(int channel, int angle) {
@@ -28,7 +32,7 @@ void servoWrite(int channel, int angle) {
   ledcWrite(channel, duty);
 }
 
-// 保持你原来的打孔动作
+// 你的动作方式：ch2 初始化在50，每次打孔 50 -> 0 -> 50
 void punchOnce() {
   servoWrite(ch2, 50);
   delay(800);
@@ -40,35 +44,63 @@ void punchOnce() {
   delay(800);
 }
 
-// 打某一个点，dotIndex = 0~5，对应盲文点1~点6
-void punchDot(int dotIndex) {
-  ch1Angle = dotAngle[dotIndex];
+void punchDot(int dotNumber) {
+  if (dotNumber < 1 || dotNumber > 6) return;
 
-  servoWrite(ch1, ch1Angle);
+  int index = dotNumber - 1;
+
+  servoWrite(ch1, dotAngle[index]);
   delay(500);
 
   punchOnce();
 }
 
-// bit0~bit5 对应 点1~点6
-void printBrailleCell(byte pattern) {
-  for (int i = 0; i < 6; i++) {
-    if (pattern & (1 << i)) {
-      punchDot(i);
+void printOneCell(String cell) {
+  cell.trim();
+
+  for (int i = 0; i < cell.length(); i++) {
+    char c = cell.charAt(i);
+    if (c >= '1' && c <= '6') {
+      punchDot(c - '0');
     }
   }
 }
 
-// 示例中文盲文表：先用于测试
-// 后面可以继续往这里加汉字
-byte getChineseBraille(String word) {
-  if (word == "你") return 0b000101; // 点1 点3
-  if (word == "好") return 0b011001; // 点1 点4 点5
-  if (word == "中") return 0b001101; // 点1 点3 点4
-  if (word == "我") return 0b010111; // 点1 点2 点3 点5
-  if (word == "是") return 0b001110; // 点2 点3 点4
+void printBrailleCode(String code) {
+  code.trim();
 
-  return 0;
+  int start = 0;
+
+  while (start < code.length()) {
+    int spaceIndex = code.indexOf(' ', start);
+    String cell;
+
+    if (spaceIndex == -1) {
+      cell = code.substring(start);
+      start = code.length();
+    } else {
+      cell = code.substring(start, spaceIndex);
+      start = spaceIndex + 1;
+    }
+
+    if (cell.length() > 0) {
+      printOneCell(cell);
+      delay(1200);
+    }
+  }
+}
+
+void handlePrint() {
+  if (!server.hasArg("code")) {
+    server.send(400, "text/plain; charset=utf-8", "缺少 code 参数");
+    return;
+  }
+
+  String code = server.arg("code");
+
+  server.send(200, "text/plain; charset=utf-8", "ESP32收到点位：" + code);
+
+  printBrailleCode(code);
 }
 
 void setup() {
@@ -81,38 +113,41 @@ void setup() {
   ledcSetup(ch2, freq, resolution);
   ledcAttachPin(servoPin2, ch2);
 
-  // 记录6个触点位置
   for (int i = 0; i < STEP_COUNT; i++) {
     dotAngle[i] = CH1_START_ANGLE + i * DEG_PER_MM;
     if (dotAngle[i] > 180) dotAngle[i] = 180;
+
+    Serial.print("Dot ");
+    Serial.print(i + 1);
+    Serial.print(" angle = ");
+    Serial.println(dotAngle[i]);
   }
 
   servoWrite(ch1, CH1_START_ANGLE);
   delay(1000);
 
+  // 你要求初始化必须是50
   servoWrite(ch2, 50);
-  delay(500);
+  delay(1000);
 
-  Serial.println("请输入一个汉字：你 / 好 / 中 / 我 / 是");
+  WiFi.begin(ssid, password);
+  Serial.println("正在连接WiFi...");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.print("ESP32 IP地址：http://");
+  Serial.println(WiFi.localIP());
+
+  server.on("/print", handlePrint);
+  server.begin();
+
+  Serial.println("打印服务器已启动");
 }
 
 void loop() {
-  if (Serial.available()) {
-    String input = Serial.readStringUntil('\n');
-    input.trim();
-
-    byte pattern = getChineseBraille(input);
-
-    if (pattern == 0) {
-      Serial.println("这个汉字还没有加入表");
-      return;
-    }
-
-    Serial.print("开始打印：");
-    Serial.println(input);
-
-    printBrailleCell(pattern);
-
-    Serial.println("打印完成");
-  }
+  server.handleClient();
 }
