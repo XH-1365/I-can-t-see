@@ -4,7 +4,7 @@ import requests
 
 app = Flask(__name__)
 
-ESP32_URL = "http://192.168.137.14/print"  # 改成你的
+ESP32_URL = "http://192.168.137.247/print"  # 改成你的
 
 # 声母表（示例）
 INITIALS = {
