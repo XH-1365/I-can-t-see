@@ -1,12 +1,16 @@
 from flask import Flask, request, render_template_string
 from pypinyin import pinyin, Style
 import requests
+import threading
+import webbrowser
 
 app = Flask(__name__)
 
-ESP32_URL = "http://192.168.137.247/print"  # 改成你的
+# 修改成你的ESP32地址
+ESP32_BASE = "http://192.168.137.174"
+ESP32_URL = ESP32_BASE + "/print"
 
-# 声母表（示例）
+# 声母表
 INITIALS = {
     "b": "12",
     "p": "1234",
@@ -25,7 +29,7 @@ INITIALS = {
     "s": "2345",
 }
 
-# 韵母表（示例）
+# 韵母表
 FINALS = {
     "a": "1",
     "o": "13",
@@ -40,14 +44,15 @@ FINALS = {
     "eng": "245",
 }
 
-# 声调
+# 声调表
 TONES = {
     "1": "1",
     "2": "12",
     "3": "14",
     "4": "145",
-    "5": ""  # 轻声
+    "5": ""
 }
+
 
 def split_pinyin(py):
     """拆分声母和韵母"""
@@ -55,6 +60,7 @@ def split_pinyin(py):
         if py[:i] in INITIALS:
             return py[:i], py[i:]
     return "", py
+
 
 def pinyin_to_braille(py):
     tone = py[-1] if py[-1].isdigit() else "5"
@@ -75,8 +81,13 @@ def pinyin_to_braille(py):
 
     return result
 
+
 def chinese_to_code(text):
-    pys = pinyin(text, style=Style.TONE3, neutral_tone_with_five=True)
+    pys = pinyin(
+        text,
+        style=Style.TONE3,
+        neutral_tone_with_five=True
+    )
 
     result = []
 
@@ -84,39 +95,146 @@ def chinese_to_code(text):
         py = item[0]
         result += pinyin_to_braille(py)
 
-    return " ".join(result), pys
+    return " ".join(result)
+
 
 HTML = """
-<h2>中文盲文打印</h2>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>盲文打印机</title>
+
+<style>
+body{
+    font-family:Arial;
+    text-align:center;
+    margin-top:50px;
+}
+
+h1{
+    font-size:40px;
+}
+
+input{
+    width:80%;
+    max-width:600px;
+    height:60px;
+    font-size:24px;
+    text-align:center;
+}
+
+button{
+    width:220px;
+    height:60px;
+    font-size:24px;
+    margin:10px;
+    cursor:pointer;
+}
+
+.status{
+    margin-top:30px;
+    font-size:22px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>盲文打印机</h1>
+
 <form method="post">
-<input name="text" style="width:300px;height:40px;font-size:20px">
-<button type="submit">打印</button>
+<input
+name="text"
+placeholder="请输入中文"
+required>
+<br><br>
+
+<button type="submit">
+打印
+</button>
 </form>
-<pre>{{ result }}</pre>
+
+<form method="post" action="/finish">
+<button type="submit">
+停止走纸
+</button>
+</form>
+
+<div class="status">
+{{ result }}
+</div>
+
+</body>
+</html>
 """
 
-@app.route("/", methods=["GET","POST"])
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    result = ""
+
+    result = "等待输入"
 
     if request.method == "POST":
-        text = request.form["text"]
 
-        code, pys = chinese_to_code(text)
+        text = request.form["text"].strip()
 
-        result = f"""
-输入: {text}
-拼音: {pys}
-盲文点位: {code}
-"""
+        if text:
 
-        try:
-            requests.get(ESP32_URL, params={"code": code}, timeout=5)
-            result += "\n已发送到打印机"
-        except Exception as e:
-            result += f"\n发送失败: {e}"
+            code = chinese_to_code(text)
 
-    return render_template_string(HTML, result=result)
+            try:
+
+                requests.get(
+                    ESP32_URL,
+                    params={"code": code},
+                    timeout=5
+                )
+
+                result = f"正在打印：{text}"
+
+            except Exception as e:
+
+                result = f"发送失败：{e}"
+
+    return render_template_string(
+        HTML,
+        result=result
+    )
+
+
+@app.route("/finish", methods=["GET", "POST"])
+def finish():
+
+    try:
+
+        r = requests.get(
+            ESP32_BASE + "/finish",
+            timeout=5
+        )
+
+        result = "已停止走纸"
+
+    except Exception as e:
+
+        result = f"请求失败：{e}"
+
+    return render_template_string(
+        HTML,
+        result=result
+    )
+
+
+def open_browser():
+    webbrowser.open("http://127.0.0.1:5000")
+
 
 if __name__ == "__main__":
-    app.run(port=5000)
+
+    threading.Timer(1, open_browser).start()
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )

@@ -56,11 +56,13 @@ float currentXmm = 0;
 
 #define PWM_CH_Y 3
 
-#define Y_PWM_SPEED 230
+#define Y_PWM_SPEED 255
 #define MS_PER_MM 120.0
 #define LINE_STEP_MM 150.0
 
 float currentYmm = 0;
+// 启动时 Y 轴持续走纸，直到网页上点击完成走纸
+volatile bool yKeepRunning = true;
 
 /* ========= 电机PWM ========= */
 #define MOTOR_PWM_FREQ 20000
@@ -325,8 +327,12 @@ void printBrailleLine(String code) {
 
 /* ========= Web ========= */
 void handleRoot() {
-  server.send(200, "text/plain; charset=utf-8",
-              "Braille Printer Ready. Use /print?code=13%20145%203");
+  server.send(200, "text/html; charset=utf-8",
+              "<html><head><meta charset=\"utf-8\"></head><body>"
+              "<h3>Braille Printer Ready</h3>"
+              "<p>启动时 Y 轴持续走纸。完成走纸后请点击：<a href=\"/finish\">完成走纸</a></p>"
+              "<p>打印示例：GET /print?code=13%20145%203</p>"
+              "</body></html>");
 }
 
 void handlePrint() {
@@ -343,6 +349,7 @@ void handlePrint() {
 }
 
 /* ========= setup ========= */
+void handleFinishY();
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -387,6 +394,9 @@ void setup() {
   ledcAttachPin(Y_PWM, PWM_CH_Y);
 
   yMotorStop();
+  // 启动时让 Y 轴持续走动，直到网页 /finish 被点击
+  yKeepRunning = true;
+  yMotorRun(Y_PWM_SPEED);
 
   /* WiFi */
   WiFi.begin(ssid, password);
@@ -403,6 +413,7 @@ void setup() {
 
   server.on("/", handleRoot);
   server.on("/print", handlePrint);
+  server.on("/finish", handleFinishY);
   server.begin();
 
   Serial.println("盲文打印机启动完成");
@@ -411,4 +422,16 @@ void setup() {
 void loop() {
   server.handleClient();
   updateXMotor();
+}
+
+void handleFinishY() {
+  if (!yKeepRunning) {
+    server.send(200, "text/plain; charset=utf-8", "Y轴已停止，已完成走纸");
+    return;
+  }
+
+  yKeepRunning = false;
+  yMotorStop();
+  Serial.println("收到完成走纸，Y轴停止");
+  server.send(200, "text/plain; charset=utf-8", "收到，已停止Y轴走纸，可以打印");
 }
