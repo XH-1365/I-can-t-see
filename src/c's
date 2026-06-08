@@ -57,10 +57,8 @@ float currentXmm = 0;
 #define PWM_CH_Y 3
 
 #define Y_PWM_SPEED 255
-
 #define MS_PER_MM 120.0
 #define LINE_STEP_MM 150.0
-#define EJECT_MM 200.0
 
 float currentYmm = 0;
 // 启动时 Y 轴持续走纸，直到网页上点击完成走纸
@@ -279,15 +277,6 @@ void nextLine() {
   currentXmm = 0;
 }
 
-void ejectPaper() {
-
-  Serial.println("开始退纸");
-
-  moveYOpenLoopMM(EJECT_MM);
-
-  Serial.println("退纸完成");
-}
-
 void printBrailleLine(String code) {
   code.trim();
 
@@ -332,12 +321,8 @@ void printBrailleLine(String code) {
   }
 
   goHomeX();
+
   Serial.println("打印完成，X已回0");
-
-  ejectPaper();
-
-  Serial.println("打印任务结束");
-
 }
 
 /* ========= Web ========= */
