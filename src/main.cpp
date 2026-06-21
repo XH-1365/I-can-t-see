@@ -3,8 +3,8 @@
 #include <WebServer.h>
 
 /* ========= WiFi ========= */
-const char* ssid = "111";
-const char* password = "00000000";
+const char* ssid = "XH";
+const char* password = "13650311";
 
 WebServer server(80);
 
@@ -18,8 +18,8 @@ const int ch2 = 1;
 #define SERVO_FREQ 50
 #define SERVO_RES 16
 
-const int CH1_START_ANGLE = 90;
-const float DEG_PER_DOT = 20.0;
+const int CH1_START_ANGLE = 80; //Y轴舵机初始化位置
+const float DEG_PER_DOT = 20.0; //X轴的初始化位置
 int dotAngle[6];
 
 /* ========= X轴：霍尔闭环 ========= */
@@ -35,8 +35,8 @@ int dotAngle[6];
 #define X_COUNT_PER_MM 375.0
 
 #define X_MIN_MM 0.0
-#define X_MAX_MM 30.0
-#define CELL_STEP_MM 5.0
+#define X_MAX_MM 25.0 //x最大值
+#define CELL_STEP_MM 5.0 //X每次移动的最大距离，超过这个距离会自动换行
 
 #define PWM_MIN 90
 #define PWM_MAX 230
@@ -84,13 +84,13 @@ void servoWrite(int channel, int angle) {
 // ch2 初始化为 50，打点动作：50 -> 0 -> 50
 void punchOnce() {
   servoWrite(ch2, 50);
-  delay(800);
+  delay(200);
 
-  servoWrite(ch2, 0);
-  delay(300);
+  servoWrite(ch2, 7);
+  delay(500);
 
   servoWrite(ch2, 50);
-  delay(800);
+  delay(200);
 }
 
 void punchDot(int dotNumber) {
@@ -283,7 +283,7 @@ void ejectPaper() {
 
   Serial.println("开始退纸");
 
-  moveYOpenLoopMM(EJECT_MM);
+  moveYOpenLoopMM(-EJECT_MM);
 
   Serial.println("退纸完成");
 }
